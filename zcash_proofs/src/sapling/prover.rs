@@ -146,7 +146,7 @@ impl SaplingProvingContext {
         }
 
         // Verify the proof
-        verify_proof(verifying_key, &proof, &public_input[..]).map_err(|_| ())?;
+        verify_proof(verifying_key, &proof, &public_input[..]).unwrap();
 
         // Compute value commitment
         let value_commitment: jubjub::ExtendedPoint = value_commitment.commitment().into();
