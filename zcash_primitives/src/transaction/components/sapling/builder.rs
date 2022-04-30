@@ -13,6 +13,7 @@ use crate::{
     memo::MemoBytes,
     merkle_tree::MerklePath,
     sapling::{
+        asset_type::AssetType,
         note_encryption::sapling_note_encryption,
         prover::TxProver,
         redjubjub::{PrivateKey, Signature},
@@ -96,6 +97,7 @@ impl SaplingOutput {
         let rseed = generate_random_rseed_internal(params, target_height, rng);
 
         let note = Note {
+            asset_type: AssetType::new(b"").unwrap(),
             g_d,
             pk_d: *to.pk_d(),
             value: value.into(),
@@ -440,6 +442,7 @@ impl<P: consensus::Parameters> SaplingBuilder<P> {
                         (
                             payment_address,
                             Note {
+                                asset_type: AssetType::new(b"").unwrap(),
                                 g_d,
                                 pk_d,
                                 rseed,

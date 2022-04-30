@@ -742,8 +742,8 @@ mod tests {
         legacy::TransparentAddress,
         memo::MemoBytes,
         sapling::{
-            note_encryption::sapling_note_encryption, util::generate_random_rseed, Note, Nullifier,
-            PaymentAddress,
+            asset_type::AssetType, note_encryption::sapling_note_encryption,
+            util::generate_random_rseed, Note, Nullifier, PaymentAddress,
         },
         transaction::components::Amount,
         zip32::ExtendedFullViewingKey,
@@ -825,6 +825,7 @@ mod tests {
         let mut rng = OsRng;
         let rseed = generate_random_rseed(&network(), height, &mut rng);
         let note = Note {
+            asset_type: AssetType::new(b"").unwrap(),
             g_d: to.diversifier().g_d().unwrap(),
             pk_d: *to.pk_d(),
             value: value.into(),
@@ -885,6 +886,7 @@ mod tests {
         // Create a fake Note for the payment
         ctx.outputs.push({
             let note = Note {
+                asset_type: AssetType::new(b"").unwrap(),
                 g_d: to.diversifier().g_d().unwrap(),
                 pk_d: *to.pk_d(),
                 value: value.into(),
@@ -913,6 +915,7 @@ mod tests {
             let change_addr = extfvk.default_address().1;
             let rseed = generate_random_rseed(&network(), height, &mut rng);
             let note = Note {
+                asset_type: AssetType::new(b"").unwrap(),
                 g_d: change_addr.diversifier().g_d().unwrap(),
                 pk_d: *change_addr.pk_d(),
                 value: (in_value - value).unwrap().into(),

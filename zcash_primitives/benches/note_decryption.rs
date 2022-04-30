@@ -9,6 +9,7 @@ use zcash_primitives::{
     consensus::{NetworkUpgrade::Canopy, Parameters, TestNetwork, TEST_NETWORK},
     memo::MemoBytes,
     sapling::{
+        asset_type::AssetType,
         note_encryption::{
             sapling_note_encryption, try_sapling_compact_note_decryption,
             try_sapling_note_decryption, SaplingDomain,
@@ -41,14 +42,13 @@ fn bench_note_decryption(c: &mut Criterion) {
         let rseed = generate_random_rseed(&TEST_NETWORK, height, &mut rng);
 
         // Construct the value commitment for the proof instance
+        let asset_type = AssetType::new(b"").unwrap();
         let value = 100;
-        let value_commitment = ValueCommitment {
-            value,
-            randomness: jubjub::Fr::random(&mut rng),
-        };
+        let randomness = jubjub::Fr::random(&mut rng);
+        let value_commitment = asset_type.value_commitment(value, randomness);
         let cv = value_commitment.commitment().into();
 
-        let note = pa.create_note(value, rseed).unwrap();
+        let note = pa.create_note(asset_type, value, rseed).unwrap();
         let cmu = note.cmu();
 
         let ne =

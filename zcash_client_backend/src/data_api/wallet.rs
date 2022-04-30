@@ -2,7 +2,7 @@ use std::fmt::Debug;
 use zcash_primitives::{
     consensus::{self, NetworkUpgrade},
     memo::MemoBytes,
-    sapling::prover::TxProver,
+    sapling::{asset_type::AssetType, prover::TxProver},
     transaction::{
         builder::Builder,
         components::{amount::DEFAULT_FEE, Amount},
@@ -321,8 +321,9 @@ where
             .to_payment_address(selected.diversifier)
             .unwrap(); //DiversifyHash would have to unexpectedly return the zero point for this to be None
 
+        let asset_type = AssetType::new(b"").unwrap();
         let note = from
-            .create_note(selected.note_value.into(), selected.rseed)
+            .create_note(asset_type, selected.note_value.into(), selected.rseed)
             .unwrap();
 
         let merkle_path = selected.witness.path().expect("the tree is not empty");

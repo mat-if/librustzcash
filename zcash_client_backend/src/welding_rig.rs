@@ -313,8 +313,8 @@ mod tests {
         memo::MemoBytes,
         merkle_tree::CommitmentTree,
         sapling::{
-            note_encryption::sapling_note_encryption, util::generate_random_rseed, Note, Nullifier,
-            SaplingIvk,
+            asset_type::AssetType, note_encryption::sapling_note_encryption,
+            util::generate_random_rseed, Note, Nullifier, SaplingIvk,
         },
         transaction::components::Amount,
         zip32::{AccountId, ExtendedFullViewingKey, ExtendedSpendingKey},
@@ -373,6 +373,7 @@ mod tests {
         let mut rng = OsRng;
         let rseed = generate_random_rseed(&Network::TestNetwork, height, &mut rng);
         let note = Note {
+            asset_type: AssetType::new(b"").unwrap(),
             g_d: to.diversifier().g_d().unwrap(),
             pk_d: *to.pk_d(),
             value: value.into(),

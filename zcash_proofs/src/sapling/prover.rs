@@ -11,6 +11,7 @@ use zcash_primitives::{
     constants::{SPENDING_KEY_GENERATOR, VALUE_COMMITMENT_RANDOMNESS_GENERATOR},
     merkle_tree::MerklePath,
     sapling::{
+        asset_type::AssetType,
         redjubjub::{PrivateKey, PublicKey, Signature},
         Diversifier, Node, Note, PaymentAddress, ProofGenerationKey, Rseed, ValueCommitment,
     },
@@ -52,6 +53,7 @@ impl SaplingProvingContext {
         diversifier: Diversifier,
         rseed: Rseed,
         ar: jubjub::Fr,
+        asset_type: AssetType,
         value: u64,
         anchor: bls12_381::Scalar,
         merkle_path: MerklePath<Node>,
@@ -74,10 +76,7 @@ impl SaplingProvingContext {
         }
 
         // Construct the value commitment
-        let value_commitment = ValueCommitment {
-            value,
-            randomness: rcv,
-        };
+        let value_commitment = asset_type.value_commitment(value, rcv);
 
         // Construct the viewing key
         let viewing_key = proof_generation_key.to_viewing_key();
@@ -90,6 +89,7 @@ impl SaplingProvingContext {
 
         // Let's compute the nullifier while we have the position
         let note = Note {
+            asset_type: AssetType::new(b"").unwrap(),
             value,
             g_d: diversifier.g_d().expect("was a valid diversifier before"),
             pk_d: *payment_address.pk_d(),
@@ -186,10 +186,8 @@ impl SaplingProvingContext {
         }
 
         // Construct the value commitment for the proof instance
-        let value_commitment = ValueCommitment {
-            value,
-            randomness: rcv,
-        };
+        let asset_type = AssetType::new(b"").unwrap();
+        let value_commitment = asset_type.value_commitment(value, rcv);
 
         // We now have a full witness for the output proof.
         let instance = Output {

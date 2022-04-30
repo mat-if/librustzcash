@@ -8,7 +8,9 @@ use ff::Field;
 use group::Group;
 use rand_core::{RngCore, SeedableRng};
 use rand_xorshift::XorShiftRng;
-use zcash_primitives::sapling::{Diversifier, ProofGenerationKey, ValueCommitment};
+use zcash_primitives::sapling::{
+    asset_type::AssetType, Diversifier, ProofGenerationKey, ValueCommitment,
+};
 use zcash_proofs::circuit::sapling::Spend;
 
 const TREE_DEPTH: usize = 32;
@@ -34,10 +36,8 @@ fn criterion_benchmark(c: &mut Criterion) {
     .unwrap();
 
     c.bench_function("sapling", |b| {
-        let value_commitment = ValueCommitment {
-            value: 1,
-            randomness: jubjub::Fr::random(&mut rng),
-        };
+        let asset_type = AssetType::new(b"").unwrap();
+        let value_commitment = asset_type.value_commitment(1, jubjub::Fr::random(&mut rng));
 
         let proof_generation_key = ProofGenerationKey {
             ak: jubjub::SubgroupPoint::random(&mut rng),

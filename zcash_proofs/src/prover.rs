@@ -6,6 +6,7 @@ use std::path::Path;
 use zcash_primitives::{
     merkle_tree::MerklePath,
     sapling::{
+        asset_type::AssetType,
         prover::TxProver,
         redjubjub::{PublicKey, Signature},
         Diversifier, Node, PaymentAddress, ProofGenerationKey, Rseed,
@@ -160,6 +161,7 @@ impl TxProver for LocalTxProver {
             diversifier,
             rseed,
             ar,
+            AssetType::new(b"").unwrap(),
             value,
             anchor,
             merkle_path,

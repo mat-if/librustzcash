@@ -490,7 +490,7 @@ mod tests {
         extensions::transparent::{self as tze, Extension, FromPayload, ToPayload},
         legacy::TransparentAddress,
         merkle_tree::{CommitmentTree, IncrementalWitness},
-        sapling::{Node, Rseed},
+        sapling::{asset_type::AssetType, Node, Rseed},
         transaction::{
             builder::Builder,
             components::{
@@ -810,8 +810,13 @@ mod tests {
         // create some inputs to spend
         let extsk = ExtendedSpendingKey::master(&[]);
         let to = extsk.default_address().1;
+        let asset_type = AssetType::new(b"").unwrap();
         let note1 = to
-            .create_note(110000, Rseed::BeforeZip212(jubjub::Fr::random(&mut rng)))
+            .create_note(
+                asset_type,
+                110000,
+                Rseed::BeforeZip212(jubjub::Fr::random(&mut rng)),
+            )
             .unwrap();
         let cm1 = Node::new(note1.cmu().to_repr());
         let mut tree = CommitmentTree::empty();

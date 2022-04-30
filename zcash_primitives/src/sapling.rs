@@ -1,5 +1,6 @@
 //! Structs and constants specific to the Sapling shielded pool.
 
+pub mod asset_type;
 pub mod group_hash;
 pub mod keys;
 pub mod note_encryption;
@@ -12,6 +13,7 @@ use bitvec::{order::Lsb0, view::AsBits};
 use blake2s_simd::Params as Blake2sParams;
 use byteorder::{LittleEndian, WriteBytesExt};
 use ff::{Field, PrimeField};
+use group::cofactor::CofactorGroup;
 use group::{Curve, Group, GroupEncoding};
 use incrementalmerkletree::{self, Altitude};
 use lazy_static::lazy_static;
@@ -28,6 +30,7 @@ use crate::{
     transaction::components::amount::MAX_MONEY,
 };
 
+use self::asset_type::AssetType;
 use self::{
     group_hash::group_hash,
     pedersen_hash::{pedersen_hash, Personalization},
@@ -164,13 +167,14 @@ pub(crate) fn spend_sig_internal<R: RngCore>(
 
 #[derive(Clone)]
 pub struct ValueCommitment {
+    pub asset_generator: jubjub::ExtendedPoint,
     pub value: u64,
     pub randomness: jubjub::Fr,
 }
 
 impl ValueCommitment {
     pub fn commitment(&self) -> jubjub::SubgroupPoint {
-        (constants::VALUE_COMMITMENT_VALUE_GENERATOR * jubjub::Fr::from(self.value))
+        (CofactorGroup::clear_cofactor(&self.asset_generator) * jubjub::Fr::from(self.value))
             + (constants::VALUE_COMMITMENT_RANDOMNESS_GENERATOR * self.randomness)
     }
 }
@@ -332,8 +336,9 @@ impl PaymentAddress {
         self.diversifier.g_d()
     }
 
-    pub fn create_note(&self, value: u64, rseed: Rseed) -> Option<Note> {
+    pub fn create_note(&self, asset_type: AssetType, value: u64, rseed: Rseed) -> Option<Note> {
         self.g_d().map(|g_d| Note {
+            asset_type,
             value,
             rseed,
             g_d,
@@ -401,6 +406,8 @@ impl From<NoteValue> for u64 {
 
 #[derive(Clone, Debug)]
 pub struct Note {
+    /// The asset type that the note represents
+    pub asset_type: AssetType,
     /// The value of the note
     pub value: u64,
     /// The diversified base of the address, GH(d)
@@ -414,6 +421,7 @@ pub struct Note {
 impl PartialEq for Note {
     fn eq(&self, other: &Self) -> bool {
         self.value == other.value
+            && self.asset_type == other.asset_type
             && self.g_d == other.g_d
             && self.pk_d == other.pk_d
             && self.rcm() == other.rcm()
@@ -432,6 +440,9 @@ impl Note {
         // Calculate the note contents, as bytes
         let mut note_contents = vec![];
 
+        // Write the asset generator, cofactor not cleared
+        note_contents.extend_from_slice(&self.asset_type.asset_generator().to_bytes());
+
         // Writing the value in little endian
         (&mut note_contents)
             .write_u64::<LittleEndian>(self.value)
@@ -443,7 +454,7 @@ impl Note {
         // Write pk_d
         note_contents.extend_from_slice(&self.pk_d.to_bytes());
 
-        assert_eq!(note_contents.len(), 32 + 32 + 8);
+        assert_eq!(note_contents.len(), 32 + 32 + 32 + 8);
 
         // Compute the Pedersen hash of the note contents
         let hash_of_contents = pedersen_hash(
@@ -528,7 +539,7 @@ pub mod testing {
         transaction::components::amount::MAX_MONEY, zip32::testing::arb_extended_spending_key,
     };
 
-    use super::{Node, Note, NoteValue, PaymentAddress, Rseed};
+    use super::{asset_type::AssetType, Node, Note, NoteValue, PaymentAddress, Rseed};
 
     prop_compose! {
         pub fn arb_note_value()(value in 0u64..=MAX_MONEY as u64) -> NoteValue {
@@ -561,6 +572,7 @@ pub mod testing {
             rseed in prop::array::uniform32(prop::num::u8::ANY).prop_map(Rseed::AfterZip212)
         ) -> Note {
             Note {
+                asset_type: AssetType::new(b"").unwrap(),
                 value: value.into(),
                 g_d: addr.g_d().unwrap(), // this unwrap is safe because arb_payment_address always generates an address with a valid g_d
                 pk_d: *addr.pk_d(),

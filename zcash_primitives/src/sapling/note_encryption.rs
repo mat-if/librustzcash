@@ -18,7 +18,7 @@ use crate::{
     consensus::{self, BlockHeight, NetworkUpgrade::Canopy, ZIP212_GRACE_PERIOD},
     keys::OutgoingViewingKey,
     memo::MemoBytes,
-    sapling::{Diversifier, Note, PaymentAddress, Rseed, SaplingIvk},
+    sapling::{asset_type::AssetType, Diversifier, Note, PaymentAddress, Rseed, SaplingIvk},
     transaction::components::{
         amount::Amount,
         sapling::{self, OutputDescription},
@@ -112,7 +112,8 @@ where
     let pk_d = get_validated_pk_d(&diversifier)?;
 
     let to = PaymentAddress::from_parts(diversifier, pk_d)?;
-    let note = to.create_note(value.into(), rseed)?;
+    let asset_type = AssetType::new(b"").unwrap();
+    let note = to.create_note(asset_type, value.into(), rseed)?;
     Some((note, to))
 }
 
@@ -495,7 +496,7 @@ mod tests {
         },
         keys::OutgoingViewingKey,
         memo::MemoBytes,
-        sapling::util::generate_random_rseed,
+        sapling::{asset_type::AssetType, util::generate_random_rseed},
         sapling::{Diversifier, PaymentAddress, Rseed, SaplingIvk, ValueCommitment},
         transaction::components::{
             amount::Amount,
@@ -551,16 +552,16 @@ mod tests {
         let pa = PaymentAddress::from_parts_unchecked(diversifier, pk_d);
 
         // Construct the value commitment for the proof instance
+        let asset_type = AssetType::new(b"").unwrap();
         let value = Amount::from_u64(100).unwrap();
-        let value_commitment = ValueCommitment {
-            value: value.into(),
-            randomness: jubjub::Fr::random(&mut rng),
-        };
+        let randomness = jubjub::Fr::random(&mut rng);
+        let value_commitment = asset_type.value_commitment(value.into(), randomness);
         let cv = value_commitment.commitment().into();
 
         let rseed = generate_random_rseed(&TEST_NETWORK, height, &mut rng);
 
-        let note = pa.create_note(value.into(), rseed).unwrap();
+        let asset_type = AssetType::new(b"").unwrap();
+        let note = pa.create_note(asset_type, value.into(), rseed).unwrap();
         let cmu = note.cmu();
 
         let ovk = OutgoingViewingKey([0; 32]);
@@ -1334,7 +1335,10 @@ mod tests {
             assert_eq!(ock.as_ref(), tv.ock);
 
             let to = PaymentAddress::from_parts(Diversifier(tv.default_d), pk_d).unwrap();
-            let note = to.create_note(tv.v, Rseed::BeforeZip212(rcm)).unwrap();
+            let asset_type = AssetType::new(b"").unwrap();
+            let note = to
+                .create_note(asset_type, tv.v, Rseed::BeforeZip212(rcm))
+                .unwrap();
             assert_eq!(note.cmu(), cmu);
 
             let output = OutputDescription {

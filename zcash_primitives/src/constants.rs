@@ -42,6 +42,12 @@ pub const VALUE_COMMITMENT_GENERATOR_PERSONALIZATION: &[u8; 8] = b"Zcash_cv";
 /// BLAKE2s Personalization for the nullifier position generator (for computing rho)
 pub const NULLIFIER_POSITION_IN_TREE_GENERATOR_PERSONALIZATION: &[u8; 8] = b"Zcash_J_";
 
+/// Length in bytes of the asset identifier
+pub const ASSET_IDENTIFIER_LENGTH: usize = 32;
+
+/// BLAKE2s Personalization for deriving asset identifier from asset name
+pub const ASSET_IDENTIFIER_PERSONALIZATION: &[u8; 8] = b"Zcash_t_";
+
 /// The prover will demonstrate knowledge of discrete log with respect to this base when
 /// they are constructing a proof, in order to authorize proof construction.
 pub const PROOF_GENERATION_KEY_GENERATOR: SubgroupPoint = SubgroupPoint::from_raw_unchecked(

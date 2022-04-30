@@ -7,6 +7,7 @@ use bellman::{Circuit, ConstraintSystem, SynthesisError};
 
 use zcash_primitives::constants;
 
+use zcash_primitives::sapling::asset_type::AssetType;
 use zcash_primitives::sapling::{
     PaymentAddress, ProofGenerationKey, ValueCommitment, SAPLING_COMMITMENT_TREE_DEPTH,
 };
@@ -59,6 +60,9 @@ pub struct Spend {
 pub struct Output {
     /// Pedersen commitment to the value being spent
     pub value_commitment: Option<ValueCommitment>,
+
+    /// Asset Type (256 bit identifier)
+    pub asset_identifier: Vec<Option<bool>>,
 
     /// The payment address of the recipient
     pub payment_address: Option<PaymentAddress>,
@@ -531,10 +535,10 @@ fn test_input_circuit_with_bls12_381() {
     let tree_depth = 32;
 
     for _ in 0..10 {
-        let value_commitment = ValueCommitment {
-            value: rng.next_u64(),
-            randomness: jubjub::Fr::random(&mut rng),
-        };
+        let asset_type = AssetType::new(b"").unwrap();
+        let value = rng.next_u64();
+        let randomness = jubjub::Fr::random(&mut rng);
+        let value_commitment = asset_type.value_commitment(value, randomness);
 
         let proof_generation_key = ProofGenerationKey {
             ak: jubjub::SubgroupPoint::random(&mut rng),
@@ -569,6 +573,7 @@ fn test_input_circuit_with_bls12_381() {
             let expected_value_commitment =
                 jubjub::ExtendedPoint::from(value_commitment.commitment()).to_affine();
             let note = Note {
+                asset_type: AssetType::new(b"").unwrap(),
                 value: value_commitment.value,
                 g_d,
                 pk_d: *payment_address.pk_d(),
@@ -701,10 +706,9 @@ fn test_input_circuit_with_bls12_381_external_test_vectors() {
     ];
 
     for i in 0..10 {
-        let value_commitment = ValueCommitment {
-            value: i,
-            randomness: jubjub::Fr::from(1000 * (i + 1)),
-        };
+        let asset_type = AssetType::new(b"").unwrap();
+        let randomness = jubjub::Fr::from(1000 * (i + 1));
+        let value_commitment = asset_type.value_commitment(i, randomness);
 
         let proof_generation_key = ProofGenerationKey {
             ak: jubjub::SubgroupPoint::random(&mut rng),
@@ -747,6 +751,7 @@ fn test_input_circuit_with_bls12_381_external_test_vectors() {
                 bls12_381::Scalar::from_str_vartime(expected_commitment_vs[i as usize]).unwrap()
             );
             let note = Note {
+                asset_type: AssetType::new(b"").unwrap(),
                 value: value_commitment.value,
                 g_d,
                 pk_d: *payment_address.pk_d(),
@@ -851,10 +856,10 @@ fn test_output_circuit_with_bls12_381() {
     ]);
 
     for _ in 0..100 {
-        let value_commitment = ValueCommitment {
-            value: rng.next_u64(),
-            randomness: jubjub::Fr::random(&mut rng),
-        };
+        let asset_type = AssetType::new(b"").unwrap();
+        let value = rng.next_u64();
+        let randomness = jubjub::Fr::random(&mut rng);
+        let value_commitment = asset_type.value_commitment(value, randomness);
 
         let nsk = jubjub::Fr::random(&mut rng);
         let ak = jubjub::SubgroupPoint::random(&mut rng);
@@ -902,6 +907,7 @@ fn test_output_circuit_with_bls12_381() {
 
             let expected_cmu = payment_address
                 .create_note(
+                    AssetType::new(b"").unwrap(),
                     value_commitment.value,
                     Rseed::BeforeZip212(commitment_randomness),
                 )

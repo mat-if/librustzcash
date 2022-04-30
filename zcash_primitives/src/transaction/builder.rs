@@ -471,7 +471,7 @@ mod tests {
         legacy::TransparentAddress,
         memo::MemoBytes,
         merkle_tree::{CommitmentTree, IncrementalWitness},
-        sapling::{prover::mock::MockTxProver, Node, Rseed},
+        sapling::{asset_type::AssetType, prover::mock::MockTxProver, Node, Rseed},
         transaction::components::{
             amount::{Amount, DEFAULT_FEE},
             sapling::builder::{self as build_s},
@@ -555,8 +555,13 @@ mod tests {
 
         let mut rng = OsRng;
 
+        let asset_type = AssetType::new(b"").unwrap();
         let note1 = to
-            .create_note(50000, Rseed::BeforeZip212(jubjub::Fr::random(&mut rng)))
+            .create_note(
+                asset_type,
+                50000,
+                Rseed::BeforeZip212(jubjub::Fr::random(&mut rng)),
+            )
             .unwrap();
         let cmu1 = Node::new(note1.cmu().to_repr());
         let mut tree = CommitmentTree::empty();
@@ -664,8 +669,13 @@ mod tests {
             );
         }
 
+        let asset_type = AssetType::new(b"").unwrap();
         let note1 = to
-            .create_note(50999, Rseed::BeforeZip212(jubjub::Fr::random(&mut rng)))
+            .create_note(
+                asset_type,
+                50999,
+                Rseed::BeforeZip212(jubjub::Fr::random(&mut rng)),
+            )
             .unwrap();
         let cmu1 = Node::new(note1.cmu().to_repr());
         let mut tree = CommitmentTree::empty();
@@ -704,8 +714,13 @@ mod tests {
             );
         }
 
+        let asset_type = AssetType::new(b"").unwrap();
         let note2 = to
-            .create_note(1, Rseed::BeforeZip212(jubjub::Fr::random(&mut rng)))
+            .create_note(
+                asset_type,
+                1,
+                Rseed::BeforeZip212(jubjub::Fr::random(&mut rng)),
+            )
             .unwrap();
         let cmu2 = Node::new(note2.cmu().to_repr());
         tree.append(cmu2).unwrap();

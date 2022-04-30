@@ -71,6 +71,7 @@ pub mod mock {
         constants::SPENDING_KEY_GENERATOR,
         merkle_tree::MerklePath,
         sapling::{
+            asset_type::AssetType,
             redjubjub::{PublicKey, Signature},
             Diversifier, Node, PaymentAddress, ProofGenerationKey, Rseed, ValueCommitment,
         },
@@ -99,12 +100,12 @@ pub mod mock {
         ) -> Result<([u8; GROTH_PROOF_SIZE], jubjub::ExtendedPoint, PublicKey), ()> {
             let mut rng = OsRng;
 
-            let cv = ValueCommitment {
-                value,
-                randomness: jubjub::Fr::random(&mut rng),
-            }
-            .commitment()
-            .into();
+            let asset_type = AssetType::new(b"").unwrap();
+            let randomness = jubjub::Fr::random(&mut rng);
+            let cv = asset_type
+                .value_commitment(value, randomness)
+                .commitment()
+                .into();
 
             let rk =
                 PublicKey(proof_generation_key.ak.into()).randomize(ar, SPENDING_KEY_GENERATOR);
@@ -122,12 +123,12 @@ pub mod mock {
         ) -> ([u8; GROTH_PROOF_SIZE], jubjub::ExtendedPoint) {
             let mut rng = OsRng;
 
-            let cv = ValueCommitment {
-                value,
-                randomness: jubjub::Fr::random(&mut rng),
-            }
-            .commitment()
-            .into();
+            let asset_type = AssetType::new(b"").unwrap();
+            let randomness = jubjub::Fr::random(&mut rng);
+            let cv = asset_type
+                .value_commitment(value, randomness)
+                .commitment()
+                .into();
 
             ([0u8; GROTH_PROOF_SIZE], cv)
         }
