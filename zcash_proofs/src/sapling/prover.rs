@@ -195,6 +195,7 @@ impl SaplingProvingContext {
             payment_address: Some(payment_address),
             commitment_randomness: Some(rcm),
             esk: Some(esk),
+            asset_identifier: asset_type.identifier_bits(),
         };
 
         // Create proof

@@ -5,6 +5,7 @@ use group::Curve;
 
 use bellman::{Circuit, ConstraintSystem, SynthesisError};
 
+use itertools::multizip;
 use zcash_primitives::constants;
 
 use zcash_primitives::sapling::asset_type::AssetType;
@@ -79,10 +80,35 @@ pub struct Output {
 fn expose_value_commitment<CS>(
     mut cs: CS,
     value_commitment: Option<ValueCommitment>,
-) -> Result<Vec<boolean::Boolean>, SynthesisError>
+) -> Result<(Vec<boolean::Boolean>, Vec<boolean::Boolean>), SynthesisError>
 where
     CS: ConstraintSystem<bls12_381::Scalar>,
 {
+    // Witness the asset type
+    let asset_generator = ecc::EdwardsPoint::witness(
+        cs.namespace(|| "asset_generator"),
+        value_commitment.as_ref().map(|vc| vc.asset_generator),
+    )?;
+
+    // Booleanize the asset type
+    let asset_generator_bits = asset_generator.repr(cs.namespace(|| "unpack asset_generator"))?;
+
+    // Clear the cofactor of the asset generator, producing the value commitment generator
+    let asset_generator =
+        asset_generator.double(cs.namespace(|| "asset_generator first doubling"))?;
+    let asset_generator =
+        asset_generator.double(cs.namespace(|| "asset_generator second doubling"))?;
+    let asset_generator =
+        asset_generator.double(cs.namespace(|| "asset_generator third doubling"))?;
+
+    // (0, -1) is a small order point, but won't ever appear here
+    // because cofactor is 2^3, and we performed three doublings.
+    // (0, 1) is the neutral element, so checking if x is nonzero
+    // is sufficient to prevent small order points here.
+    asset_generator
+        .get_u()
+        .assert_nonzero(cs.namespace(|| "check asset_generator != 0"))?;
+
     // Booleanize the value into little-endian bit order
     let value_bits = boolean::u64_into_boolean_vec_le(
         cs.namespace(|| "value"),
@@ -90,9 +116,8 @@ where
     )?;
 
     // Compute the note value in the exponent
-    let value = ecc::fixed_base_multiplication(
+    let value = asset_generator.mul(
         cs.namespace(|| "compute the value in the exponent"),
-        &VALUE_COMMITMENT_VALUE_GENERATOR,
         &value_bits,
     )?;
 
@@ -117,7 +142,7 @@ where
     // Expose the commitment as an input to the circuit
     cv.inputize(cs.namespace(|| "commitment point"))?;
 
-    Ok(value_bits)
+    Ok((asset_generator_bits, value_bits))
 }
 
 impl Circuit<bls12_381::Scalar> for Spend {
@@ -225,7 +250,7 @@ impl Circuit<bls12_381::Scalar> for Spend {
         let pk_d = g_d.mul(cs.namespace(|| "compute pk_d"), &ivk)?;
 
         // Compute note contents:
-        // value (in big endian) followed by g_d and pk_d
+        // asset_generator, then value (in big endian) followed by g_d and pk_d
         let mut note_contents = vec![];
 
         // Handle the value; we'll need it later for the
@@ -233,7 +258,7 @@ impl Circuit<bls12_381::Scalar> for Spend {
         let mut value_num = num::Num::zero();
         {
             // Get the value in little-endian bit order
-            let value_bits = expose_value_commitment(
+            let (asset_generator_bits, value_bits) = expose_value_commitment(
                 cs.namespace(|| "value commitment"),
                 self.value_commitment,
             )?;
@@ -245,6 +270,9 @@ impl Circuit<bls12_381::Scalar> for Spend {
                 value_num = value_num.add_bool_with_coeff(CS::one(), bit, coeff);
                 coeff = coeff.double();
             }
+
+            // Place the asset generator in the note
+            note_contents.extend(asset_generator_bits);
 
             // Place the value in the note
             note_contents.extend(value_bits);
@@ -258,6 +286,7 @@ impl Circuit<bls12_381::Scalar> for Spend {
 
         assert_eq!(
             note_contents.len(),
+            256 + // asset_generator bits
             64 + // value
             256 + // g_d
             256 // p_d
@@ -403,14 +432,69 @@ impl Circuit<bls12_381::Scalar> for Output {
     ) -> Result<(), SynthesisError> {
         // Let's start to construct our note, which contains
         // value (big endian)
+        // asset_generator || value || g_d || pk_d
         let mut note_contents = vec![];
 
-        // Expose the value commitment and place the value
-        // in the note.
-        note_contents.extend(expose_value_commitment(
-            cs.namespace(|| "value commitment"),
-            self.value_commitment,
-        )?);
+        // Reserve 256 bits for the preimage
+        let mut asset_generator_preimage = Vec::with_capacity(256);
+
+        // Ensure the input identifier is 32 bytes
+        assert_eq!(256, self.asset_identifier.len());
+
+        for (i, bit) in self.asset_identifier.iter().enumerate() {
+            let cs = &mut cs.namespace(|| format!("witness asset type bit {}", i));
+
+            //  Witness each bit of the asset identifier
+            let asset_identifier_preimage_bit = boolean::Boolean::from(
+                boolean::AllocatedBit::alloc(cs.namespace(|| "asset type bit"), *bit)?,
+            );
+
+            // Push this boolean for asset generator computation later
+            asset_generator_preimage.push(asset_identifier_preimage_bit.clone());
+        }
+
+        // Ensure the preimage of the generator is 32 bytes
+        assert_eq!(256, asset_generator_preimage.len());
+
+        // Compute the asset generator from the asset identifier
+        let asset_generator_image = blake2s::blake2s(
+            cs.namespace(|| "value base computation"),
+            &asset_generator_preimage,
+            constants::VALUE_COMMITMENT_GENERATOR_PERSONALIZATION,
+        )?;
+
+        // Expose the value commitment
+        let (asset_generator_bits, value_bits) =
+            expose_value_commitment(cs.namespace(|| "value commitment"), self.value_commitment)?;
+
+        // Ensure the witnessed asset generator is 32 bytes
+        assert_eq!(256, asset_generator_bits.len());
+
+        // Ensure the computed asset generator is 32 bytes
+        assert_eq!(256, asset_generator_image.len());
+
+        // Check integrity of the asset generator
+        // The following 256 constraints may not be strictly
+        // necessary; the output of the BLAKE2s hash may be
+        // interpreted directly as a curve point instead
+        // However, witnessing the asset generator separately
+        // and checking equality to the image of the hash
+        // is conceptually clear and not particularly expensive
+        for (i, asset_generator_bit, asset_generator_image_bit) in
+            multizip((0..256, &asset_generator_bits, &asset_generator_image))
+        {
+            boolean::Boolean::enforce_equal(
+                cs.namespace(|| format!("integrity of asset generator bit {}", i)),
+                asset_generator_bit,
+                asset_generator_image_bit,
+            )?;
+        }
+
+        // Place the asset generator in the note commitment
+        note_contents.extend(asset_generator_bits);
+
+        // Place the value in the note
+        note_contents.extend(value_bits);
 
         // Let's deal with g_d
         {
@@ -478,6 +562,7 @@ impl Circuit<bls12_381::Scalar> for Output {
 
         assert_eq!(
             note_contents.len(),
+            256 + // asset generator
             64 + // value
             256 + // g_d
             256 // pk_d
@@ -573,7 +658,7 @@ fn test_input_circuit_with_bls12_381() {
             let expected_value_commitment =
                 jubjub::ExtendedPoint::from(value_commitment.commitment()).to_affine();
             let note = Note {
-                asset_type: AssetType::new(b"").unwrap(),
+                asset_type,
                 value: value_commitment.value,
                 g_d,
                 pk_d: *payment_address.pk_d(),
@@ -751,7 +836,7 @@ fn test_input_circuit_with_bls12_381_external_test_vectors() {
                 bls12_381::Scalar::from_str_vartime(expected_commitment_vs[i as usize]).unwrap()
             );
             let note = Note {
-                asset_type: AssetType::new(b"").unwrap(),
+                asset_type,
                 value: value_commitment.value,
                 g_d,
                 pk_d: *payment_address.pk_d(),
@@ -894,6 +979,7 @@ fn test_output_circuit_with_bls12_381() {
                 payment_address: Some(payment_address.clone()),
                 commitment_randomness: Some(commitment_randomness),
                 esk: Some(esk),
+                asset_identifier: asset_type.identifier_bits(),
             };
 
             instance.synthesize(&mut cs).unwrap();
